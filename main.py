@@ -12,8 +12,21 @@ class Char:
         return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
 
 
+class Cell:
+    def __init__(self, brightness: int = 0, pixels: Image.Image = Image.new("1", (1, 1))):
+        self.brightness = brightness
+        self.pixels = pixels
+
+
 def roundToMultiple(value: int|float, multiple: int|float) -> int|float:
     return round(value / multiple) * multiple
+
+
+def printProgressBar(progress: float, length: int = 20):
+    if progress < 1.0:
+        print("\r[" + "■" * math.floor(progress * length) + "-" * (length - math.floor(progress * length)) + "]", end="")
+    else:
+        print("\r[" + "■" * length + "] √")
 
 
 def main():
@@ -25,7 +38,7 @@ def main():
         imagePath = f"images/{input('')}"
 
     # Get font size
-    print("Enter the font size, in pixels, higher values result in less detail: ")
+    print("Enter the font size, in pixels, higher values result in a smaller and less detailed output: ")
     fontSize = input('')
     try:
         fontSize = int(fontSize)
@@ -41,6 +54,22 @@ def main():
             fontSize = 0
     
     cellSize = (int(fontSize * 0.6), int(fontSize * 1.2))
+
+    # Get the image color complexity for the edge detection filter, higher values result in a more detailed image, but can also result in more noise
+    print("Enter the image color complexity for the edge detection filter (higher values result in more detail but can also result in more noise, 3 recommended):")
+    colorComplexity = input('')
+    try:
+        colorComplexity = int(colorComplexity)
+    except ValueError:
+        colorComplexity = 0
+    
+    while colorComplexity <= 0:
+        print("Color complexity must be a positive integer.")
+        colorComplexity = int(input(''))
+        try:
+            colorComplexity = int(colorComplexity)
+        except ValueError:
+            colorComplexity = 0
 
     ascii = '''
 ☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ 
@@ -64,7 +93,7 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             newChar = Char(char, 0, Image.new("1", cellSize))
             ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=font, fill=255)
             for pixel in newChar.pixels.get_flattened_data():
-                newChar.brightness += pixel
+                newChar.brightness += 1 if pixel > 0 else 0
             chars.append(newChar)
         
         # Save the font data to a file
@@ -91,41 +120,48 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
         print(f"Image resolution is not a multiple of the cell size, resizing image to {newWidth}x{newHeight}...")
         image = image.resize((newWidth, newHeight))
     
-    # Apply an edge detection filter to the image
-    imageCellsBrightness = []
-    filterImage = Image.new("L", image.size)
-    isColorImage = len(image.getbands()) > 1
+    imageCells = [[Cell() for y in range(image.size[1] // cellSize[1])] for x in range(image.size[0] // cellSize[0])]
+
+    # Apply a custom color quantization filter to the image to reduce the number of colors and make it easier to convert to ASCII art
+    print("Quantizing image colors...")
     for x in range(image.size[0]):
         for y in range(image.size[1]):
+            printProgressBar((x * image.size[1] + y + 1) / (image.size[0] * image.size[1]), 50)
+
+            pixel = image.getpixel((x, y))
+            if len(pixel) == 4:
+                pixel = pixel[:3]
+            newPixel = []
+            for i in range(3):
+                newPixel.append(int(roundToMultiple(pixel[i], 255 / colorComplexity)))
+            image.putpixel((x, y), tuple(newPixel))
+    # save a copy of the quantized image for debugging purposes
+    image.save("test_output_quantized_image.png")
+
+    # Apply an edge detection filter to the image
+    print("Applying edge detection filter...")
+    filterImage = Image.new("L", image.size)
+    for x in range(image.size[0]):
+        for y in range(image.size[1]):
+            printProgressBar((x * image.size[1] + y + 1) / (image.size[0] * image.size[1]), 50)
+
             brightness = 0
 
             if x > 0:
-                if isColorImage:
-                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x - 1, y))[i]) for i in range(3)]) / 3
-                else:
-                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x - 1, y)))
+                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x - 1, y)) else 0
             if x < image.size[0] - 1:
-                if isColorImage:
-                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x + 1, y))[i]) for i in range(3)]) / 3
-                else:
-                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x + 1, y)))
+                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x + 1, y)) else 0
             if y > 0:
-                if isColorImage:
-                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x, y - 1))[i]) for i in range(3)]) / 3
-                else:
-                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x, y - 1)))
+                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y - 1)) else 0
             if y < image.size[1] - 1:
-                if isColorImage:
-                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x, y + 1))[i]) for i in range(3)]) / 3
-                else:
-                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x, y + 1)))
+                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y + 1)) else 0
             
-            filterImage.putpixel((x, y), int(brightness))
+            filterImage.putpixel((x, y), round(min(brightness, 1) * 255))
 
             currentCell = (x // cellSize[0], y // cellSize[1])
-            if len(imageCellsBrightness) <= currentCell[0]:
-                imageCellsBrightness.append([])
-            imageCellsBrightness[currentCell[0]].append(brightness)
+            imageCells[currentCell[0]][currentCell[1]].brightness += brightness
+            if x % cellSize[0] == cellSize[0] - 1 and y % cellSize[1] == cellSize[1] - 1:
+                imageCells[currentCell[0]][currentCell[1]].pixels = filterImage.crop((currentCell[0] * cellSize[0], currentCell[1] * cellSize[1], (currentCell[0] + 1) * cellSize[0], (currentCell[1] + 1) * cellSize[1]))
     # save a copy of the filtered image for debugging purposes
     filterImage.save("test_output_filtered_image.png")
 
