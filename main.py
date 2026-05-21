@@ -30,10 +30,14 @@ def printProgressBar(progress: float, length: int = 20):
 
 
 def main():
+    test = False
+    if sys.argv[1:] and sys.argv[1] == "--test":
+        test = True
+
     # Get image name from user and confirm it exists in the Images folder
     print("Enter the name of the image you want to convert to ASCII art (must be in the Images folder):")
     imagePath = f"images/{input('')}"
-    while not os.path.exists(imagePath) and imagePath != "images/test":
+    while not os.path.exists(imagePath):
         print("Image not found. Name must include file extension (e.g. .jpg, .png) and image must be in the Images folder.")
         imagePath = f"images/{input('')}"
 
@@ -53,7 +57,7 @@ def main():
         except ValueError:
             fontSize = 0
     
-    cellSize = (int(fontSize * 0.6), int(fontSize * 1.2))
+    cellSize = (round(fontSize * 0.6), round(fontSize * 1.2))
 
     # Get the image color complexity for the edge detection filter, higher values result in a more detailed image, but can also result in more noise
     print("Enter the image color complexity for the edge detection filter (higher values result in more detail but can also result in more noise, 3 recommended):")
@@ -135,8 +139,10 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             for i in range(3):
                 newPixel.append(int(roundToMultiple(pixel[i], 255 / colorComplexity)))
             image.putpixel((x, y), tuple(newPixel))
-    # save a copy of the quantized image for debugging purposes
-    image.save("test_output_quantized_image.png")
+    
+    # Save a copy of the quantized image for debugging purposes
+    if test:
+        image.save("test_output_quantized_image.png")
 
     # Apply an edge detection filter to the image
     print("Applying edge detection filter...")
@@ -162,8 +168,37 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             imageCells[currentCell[0]][currentCell[1]].brightness += brightness
             if x % cellSize[0] == cellSize[0] - 1 and y % cellSize[1] == cellSize[1] - 1:
                 imageCells[currentCell[0]][currentCell[1]].pixels = filterImage.crop((currentCell[0] * cellSize[0], currentCell[1] * cellSize[1], (currentCell[0] + 1) * cellSize[0], (currentCell[1] + 1) * cellSize[1]))
-    # save a copy of the filtered image for debugging purposes
-    filterImage.save("test_output_filtered_image.png")
+    
+    # Save a copy of the filtered image for debugging purposes
+    if test:
+        filterImage.save("test_output_filtered_image.png")
+    
+    # Convert the image cells to ASCII characters
+    print("Beginning conversion...")
+    output = []
+    for y in range(len(imageCells[0])):
+        output.append("░" * len(imageCells))
+    print(len(output))
+    
+    for y in range(len(imageCells[0])):
+        for x in range(len(imageCells)):
+            cell = imageCells[x][y]
+            closestDiff = float("inf")
+            closestChar = " "
+            for char in chars:
+                if abs(cell.brightness - char.brightness) > closestDiff:
+                    continue
+                charDiff = 0
+                for i in range(len(cell.pixels.get_flattened_data())):
+                    charDiff += abs(cell.pixels.get_flattened_data()[i] - char.pixels.get_flattened_data()[i]) / 255
+                    if charDiff > closestDiff:
+                        break
+                    elif i == len(cell.pixels.get_flattened_data()) - 1:
+                        closestDiff = charDiff
+                        closestChar = char.char
+            output[y] = output[y][:x] + closestChar + output[y][x + 1:]
+            print("\r" + output[y], end="")
+        print("\r" + output[y])
 
 
 if __name__ == "__main__":
