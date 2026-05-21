@@ -9,7 +9,7 @@ class Char:
         self.pixels = pixels
     
     def __repr__(self):
-        return f"Char(char='{self.char}', brightness={self.brightness})"
+        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
 
 
 def roundToMultiple(value: int|float, multiple: int|float) -> int|float:
@@ -40,7 +40,7 @@ def main():
         except ValueError:
             fontSize = 0
     
-    cellSize = (fontSize * 0.6, fontSize * 1.2)
+    cellSize = (int(fontSize * 0.6), int(fontSize * 1.2))
 
     ascii = '''
 ☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ 
@@ -54,44 +54,34 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     ascii = ascii.replace('\n', '')
     chars = []
 
-    # Check for a font sheet image jpg in the fonts folder and create one if it doesn't exist
-    font = ImageFont.truetype("fonts/CascadiaMono-Regular.ttf", 256)
-    fontSheetPath = f"fonts/fontsheet_{font.getname()[0]}_{font.getname()[1]}.jpg"
-    charSize = (154, 308)
-    if not os.path.exists(fontSheetPath): # If the font sheet doesn't exist, create it
-        print("Font sheet not found, creating font sheet...")
-
-        # Create a new image to draw the font sheet on
-        fontSheet = Image.new("1", (charSize[0] * 32, charSize[1] * 8))
+    # Check for a font data file in the fonts folder and create one if it doesn't exist
+    font = ImageFont.truetype("fonts/CascadiaMono-Regular.ttf", fontSize)
+    fontDataPath = f"fonts/fontdata-{font.getname()[0]}-{font.getname()[1]}"
+    if not os.path.exists(fontDataPath):
+        print("Font data file not found, creating font data file...")
+        # initialize the chars list with an image for each character and calculate the brightness of each character
+        for char in ascii:
+            newChar = Char(char, 0, Image.new("1", cellSize))
+            ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=font, fill=255)
+            for pixel in newChar.pixels.get_flattened_data():
+                newChar.brightness += pixel
+            chars.append(newChar)
         
-        # Generate a sub-image for each character in the ascii string and draw it on the font sheet, then add it to chars
-        for i, char in enumerate(ascii):
-            x = (i % 32) * charSize[0]
-            y = (i // 32) * charSize[1]
-            charImage = Image.new("1", (charSize[0], charSize[1]))
-            ImageDraw.Draw(charImage).text((0, 0), char, font=font, fill=1)
-            fontSheet.paste(charImage, (int(x), int(y)))
-            chars.append(Char(char, 0, charImage))
-        
-        # Save the font sheet image for future use
-        fontSheet.save(fontSheetPath)
-    else: # If the font sheet already exists, load it and generate the chars list from it
-        print("Font sheet found, loading font sheet...")
-
-        fontSheet = Image.open(fontSheetPath)
-
-        for i, char in enumerate(ascii):
-            x = (i % 32) * charSize[0]
-            y = (i // 32) * charSize[1]
-            charImage = fontSheet.crop((x, y, x + charSize[0], y + charSize[1]))
-            chars.append(Char(char, 0, charImage))
-    
-    # Calculate the total brightness of each character
-    for char in chars:
-        brightness = 0
-        for pixel in char.pixels.get_flattened_data():
-            brightness += pixel
-        char.brightness = brightness
+        # Save the font data to a file
+        with open(fontDataPath, 'w') as f:
+            data = ""
+            for char in chars:
+                data += f"{char}\n"
+            f.write(data)
+    else:
+        print("Font data file found, loading font data...")
+        with open(fontDataPath, 'r') as f:
+            for line in f:
+                char = line[0]
+                newChar = Char(char, 0, Image.new("1", cellSize))
+                ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=font, fill=255)
+                newChar.brightness = round(float(line[1:]) * (cellSize[0] * cellSize[1]))
+                chars.append(newChar)
     
     # Check if the target image resolution is a multiple of the cell size, if not round it to the nearest multiple
     image = Image.open(imagePath)
@@ -101,7 +91,44 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
         print(f"Image resolution is not a multiple of the cell size, resizing image to {newWidth}x{newHeight}...")
         image = image.resize((newWidth, newHeight))
     
-    # print(chars)
+    # Apply an edge detection filter to the image
+    imageCellsBrightness = []
+    filterImage = Image.new("L", image.size)
+    isColorImage = len(image.getbands()) > 1
+    for x in range(image.size[0]):
+        for y in range(image.size[1]):
+            brightness = 0
+
+            if x > 0:
+                if isColorImage:
+                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x - 1, y))[i]) for i in range(3)]) / 3
+                else:
+                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x - 1, y)))
+            if x < image.size[0] - 1:
+                if isColorImage:
+                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x + 1, y))[i]) for i in range(3)]) / 3
+                else:
+                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x + 1, y)))
+            if y > 0:
+                if isColorImage:
+                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x, y - 1))[i]) for i in range(3)]) / 3
+                else:
+                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x, y - 1)))
+            if y < image.size[1] - 1:
+                if isColorImage:
+                    brightness += sum([abs(image.getpixel((x, y))[i] - image.getpixel((x, y + 1))[i]) for i in range(3)]) / 3
+                else:
+                    brightness += abs(image.getpixel((x, y)) - image.getpixel((x, y + 1)))
+            
+            filterImage.putpixel((x, y), int(brightness))
+
+            currentCell = (x // cellSize[0], y // cellSize[1])
+            if len(imageCellsBrightness) <= currentCell[0]:
+                imageCellsBrightness.append([])
+            imageCellsBrightness[currentCell[0]].append(brightness)
+    # save a copy of the filtered image for debugging purposes
+    filterImage.save("test_output_filtered_image.png")
+
 
 if __name__ == "__main__":
     main()
