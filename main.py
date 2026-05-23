@@ -96,9 +96,10 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     if not os.path.exists(fontDataPath):
         print("Font data file not found, creating font data file...")
         # initialize the chars list with an image for each character and calculate the brightness of each character
+        tempChars = []
         tempFont = ImageFont.truetype("fonts/CascadiaMono-Regular.ttf", 20)
         for char in ascii:
-            printProgressBar((len(chars)) / len(ascii), 50)
+            printProgressBar((len(tempChars)) / len(ascii), 50)
             newChar = Char(char, 0, Image.new("1", (12, 24)))
             ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=tempFont, fill=255)
             for x in range(newChar.pixels.size[0]):
@@ -107,13 +108,13 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
                     if pixel > 0:
                         newChar.brightness += 1
                         newChar.subCells[x // round(newChar.pixels.size[0] / 6)][y // round(newChar.pixels.size[1] / 12)] += 1
-            chars.append(newChar)
-            printProgressBar((len(chars)) / len(ascii), 50)
+            tempChars.append(newChar)
+            printProgressBar((len(tempChars)) / len(ascii), 50)
         
         # Save the font data to a file
         with open(fontDataPath, 'w') as f:
             data = ""
-            for char in chars:
+            for char in tempChars:
                 data += f"{char}\n"
             f.write(data)
             print("Font data saved.")
