@@ -3,22 +3,59 @@ from PIL import Image, ImageDraw, ImageFont, ImageText
 
 
 class Char:
-    def __init__(self, char: str, brightness: int, pixels: Image.Image):
+    def __init__(self, char: str, brightness: int, pixels: Image.Image | None = None):
         self.char = char
         self.brightness = brightness
         self.pixels = pixels
-        self.subCells = [[0 for y in range(12)] for x in range(6)]
     
     def __repr__(self):
-        # Return a string with the character, its average brightness, and the average brightness of each subcell
-        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])},{','.join([str(self.subCells[x][y] / (self.pixels.size[0] * self.pixels.size[1] / 72)) for x in range(6) for y in range(12)])}"
+        # Return a string with the character, its average brightness
+        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
+    
+    def expand_filter(self):
+        # Expand the white pixels into the surrounding black pixels
+        newPixels = Image.new("L", (self.pixels.size[0], self.pixels.size[1]))
+        expDist = round(self.pixels.size[0] / 4)
+        for x in range(self.pixels.size[0]):
+            for y in range(self.pixels.size[1]):
+                if self.pixels.getpixel((x, y)) > 0:
+                    newPixels.putpixel((x, y), 255)
+                    for i in range(1, expDist + 1):
+                        b = int(255 * (expDist - i) / expDist)
+                        pixelOffsets = {(-i, 0), (i, 0), (0, -i), (0, i)}
+                        for j in range(1, i):
+                            pixelOffsets.add((-i + j, -j))
+                            pixelOffsets.add((i - j, j))
+                            pixelOffsets.add((-j, -i + j))
+                            pixelOffsets.add((j, i - j))
+
+                        for offset in pixelOffsets:
+                            pos = add_tuple((x, y), offset)
+                            if pos[0] >= 0 and pos[0] < self.pixels.size[0] and pos[1] >= 0 and pos[1] < self.pixels.size[1] and self.pixels.getpixel(pos) < b:
+                                newPixels.putpixel(pos, max(newPixels.getpixel(pos), b))
+        self.pixels = newPixels
+    
+    def get_save_data(self, fontName: str) -> str:
+        ImageDraw.Draw(self.pixels).text((0, 0), self.char, font=ImageFont.truetype(f"fonts/{fontName}", 200), fill=255)
+        for x in range(self.pixels.size[0]):
+            for y in range(self.pixels.size[1]):
+                if self.pixels.getpixel((x, y)) > 0:
+                    self.brightness += 1
+        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
 
 
 class Cell:
     def __init__(self, brightness: int = 0, pixels: Image.Image = Image.new("1", (1, 1))):
         self.brightness = brightness
         self.pixels = pixels
-        self.subCells = [[0 for y in range(12)] for x in range(6)]
+
+
+def add_tuple(t1: tuple, t2: tuple) -> tuple:
+    newLength = max(len(t1), len(t2))
+    newTuple = []
+    for i in range(newLength):
+        newTuple.append((t1[i] if i < len(t1) else 0) + (t2[i] if i < len(t2) else 0))
+    return tuple(newTuple)
 
 
 def roundToMultiple(value: int|float, multiple: int|float) -> int|float:
@@ -91,47 +128,41 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     chars = []
 
     # Check for a font data file in the fonts folder and create one if it doesn't exist
-    font = ImageFont.truetype("fonts/CascadiaMono-Regular.ttf", fontSize)
+    fontName = "CascadiaMono-Regular.ttf"
+    font = ImageFont.truetype(f"fonts/{fontName}", fontSize)
     fontDataPath = f"fonts/fontdata-{font.getname()[0]}-{font.getname()[1]}"
     if not os.path.exists(fontDataPath):
         print("Font data file not found, creating font data file...")
-        # initialize the chars list with an image for each character and calculate the brightness of each character
-        tempChars = []
-        tempFont = ImageFont.truetype("fonts/CascadiaMono-Regular.ttf", 20)
-        for char in ascii:
-            printProgressBar((len(tempChars)) / len(ascii), 50)
-            newChar = Char(char, 0, Image.new("1", (12, 24)))
-            ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=tempFont, fill=255)
-            for x in range(newChar.pixels.size[0]):
-                for y in range(newChar.pixels.size[1]):
-                    pixel = newChar.pixels.getpixel((x, y))
-                    if pixel > 0:
-                        newChar.brightness += 1
-                        newChar.subCells[x // round(newChar.pixels.size[0] / 6)][y // round(newChar.pixels.size[1] / 12)] += 1
-            tempChars.append(newChar)
-            printProgressBar((len(tempChars)) / len(ascii), 50)
-        
         # Save the font data to a file
         with open(fontDataPath, 'w') as f:
             data = ""
-            for char in tempChars:
-                data += f"{char}\n"
+            progress = 0
+            for c in ascii:
+                char = Char(c, 0, Image.new("1", (120, 240)))
+                data += f"{char.get_save_data(fontName)}\n"
+                progress += 1
+                printProgressBar(progress / len(ascii), 50)
             f.write(data)
-            print("Font data saved.")
+            print("Font data saved. Initializing characters from file...")
     else:
-        print("Font data file found, loading font data...")
+        print("Font data file found, loading...")
     with open(fontDataPath, 'r') as f:
         for line in f:
             char = line[0]
             newChar = Char(char, 0, Image.new("1", cellSize))
             ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=font, fill=255)
-            floats = line[1:].split(',')
-            newChar.brightness = round(float(floats[0]) * (cellSize[0] * cellSize[1]))
-            for x in range(6):
-                for y in range(12):
-                    newChar.subCells[x][y] = round(float(floats[1 + x * 12 + y]) * (cellSize[0] * cellSize[1] / 72))
+            newChar.brightness = round(float(line[1:]) * (cellSize[0] * cellSize[1]))
+            newChar.expand_filter()
             chars.append(newChar)
+            printProgressBar((len(chars)) / len(ascii), 50)
     
+    # Save images of the characters for debugging purposes
+    if test:
+        fontTestImage = Image.new("L", (cellSize[0] * len(chars), cellSize[1]))
+        for char in chars:
+            fontTestImage.paste(char.pixels, (chars.index(char) * cellSize[0], 0))
+        fontTestImage.save("test_outputs/font_test_image.png")
+
     # Check if the target image resolution is a multiple of the cell size, if not round it to the nearest multiple
     image = Image.open(imagePath)
     if image.size[0] % cellSize[0] != 0 or image.size[1] % cellSize[1] != 0:
@@ -158,7 +189,7 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     
     # Save a copy of the quantized image for debugging purposes
     if test:
-        image.save("test_output_quantized_image.png")
+        image.save("test_outputs/quantized_image.png")
 
     # Apply an edge detection filter to the image
     print("Applying edge detection filter...")
@@ -187,7 +218,7 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     
     # Save a copy of the filtered image for debugging purposes
     if test:
-        filterImage.save("test_output_filtered_image.png")
+        filterImage.save("test_outputs/filtered_image.png")
     
     # Convert the image cells to ASCII characters
     print("Beginning conversion...")
