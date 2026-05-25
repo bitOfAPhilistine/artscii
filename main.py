@@ -1,61 +1,12 @@
 import os, sys, math
 from PIL import Image, ImageDraw, ImageFont, ImageText
-
-
-class Char:
-    def __init__(self, char: str, brightness: int, pixels: Image.Image | None = None):
-        self.char = char
-        self.brightness = brightness
-        self.pixels = pixels
-    
-    def __repr__(self):
-        # Return a string with the character, its average brightness
-        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
-    
-    def expand_filter(self):
-        # Expand the white pixels into the surrounding black pixels
-        newPixels = Image.new("L", (self.pixels.size[0], self.pixels.size[1]))
-        expDist = round(self.pixels.size[0] / 4)
-        for x in range(self.pixels.size[0]):
-            for y in range(self.pixels.size[1]):
-                if self.pixels.getpixel((x, y)) > 0:
-                    newPixels.putpixel((x, y), 255)
-                    for i in range(1, expDist + 1):
-                        b = int(255 * (expDist - i) / expDist)
-                        pixelOffsets = {(-i, 0), (i, 0), (0, -i), (0, i)}
-                        for j in range(1, i):
-                            pixelOffsets.add((-i + j, -j))
-                            pixelOffsets.add((i - j, j))
-                            pixelOffsets.add((-j, -i + j))
-                            pixelOffsets.add((j, i - j))
-
-                        for offset in pixelOffsets:
-                            pos = add_tuple((x, y), offset)
-                            if pos[0] >= 0 and pos[0] < self.pixels.size[0] and pos[1] >= 0 and pos[1] < self.pixels.size[1] and self.pixels.getpixel(pos) < b:
-                                newPixels.putpixel(pos, max(newPixels.getpixel(pos), b))
-        self.pixels = newPixels
-    
-    def get_save_data(self, fontName: str) -> str:
-        ImageDraw.Draw(self.pixels).text((0, 0), self.char, font=ImageFont.truetype(f"fonts/{fontName}", 200), fill=255)
-        for x in range(self.pixels.size[0]):
-            for y in range(self.pixels.size[1]):
-                if self.pixels.getpixel((x, y)) > 0:
-                    self.brightness += 1
-        return f"{self.char}{self.brightness / (self.pixels.size[0] * self.pixels.size[1])}"
+from chars import Char
 
 
 class Cell:
     def __init__(self, brightness: int = 0, pixels: Image.Image = Image.new("1", (1, 1))):
         self.brightness = brightness
         self.pixels = pixels
-
-
-def add_tuple(t1: tuple, t2: tuple) -> tuple:
-    newLength = max(len(t1), len(t2))
-    newTuple = []
-    for i in range(newLength):
-        newTuple.append((t1[i] if i < len(t1) else 0) + (t2[i] if i < len(t2) else 0))
-    return tuple(newTuple)
 
 
 def roundToMultiple(value: int|float, multiple: int|float) -> int|float:
@@ -165,19 +116,19 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
 
     # Check if the target image resolution is a multiple of the cell size, if not round it to the nearest multiple
     image = Image.open(imagePath)
-    if image.size[0] % cellSize[0] != 0 or image.size[1] % cellSize[1] != 0:
-        newWidth = int(roundToMultiple(image.size[0], cellSize[0]))
-        newHeight = int(roundToMultiple(image.size[1], cellSize[1]))
+    if image.width % cellSize[0] != 0 or image.height % cellSize[1] != 0:
+        newWidth = int(roundToMultiple(image.width, cellSize[0]))
+        newHeight = int(roundToMultiple(image.height, cellSize[1]))
         print(f"Image resolution is not a multiple of the cell size, resizing image to {newWidth}x{newHeight}...")
         image = image.resize((newWidth, newHeight))
     
-    imageCells = [[Cell() for y in range(image.size[1] // cellSize[1])] for x in range(image.size[0] // cellSize[0])]
+    imageCells = [[Cell() for y in range(image.height // cellSize[1])] for x in range(image.width // cellSize[0])]
 
     # Apply a custom color quantization filter to the image to reduce the number of colors and make it easier to convert to ASCII art
     print("Quantizing image colors...")
-    for x in range(image.size[0]):
-        for y in range(image.size[1]):
-            printProgressBar((x * image.size[1] + y + 1) / (image.size[0] * image.size[1]), 50)
+    for x in range(image.width):
+        for y in range(image.height):
+            printProgressBar((x * image.height + y + 1) / (image.width * image.height), 50)
 
             pixel = image.getpixel((x, y))
             if len(pixel) == 4:
@@ -194,19 +145,19 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     # Apply an edge detection filter to the image
     print("Applying edge detection filter...")
     filterImage = Image.new("L", image.size)
-    for x in range(image.size[0]):
-        for y in range(image.size[1]):
-            printProgressBar((x * image.size[1] + y + 1) / (image.size[0] * image.size[1]), 50)
+    for x in range(image.width):
+        for y in range(image.height):
+            printProgressBar((x * image.height + y + 1) / (image.width * image.height), 50)
 
             brightness = 0
 
             if x > 0:
                 brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x - 1, y)) else 0
-            if x < image.size[0] - 1:
+            if x < image.width - 1:
                 brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x + 1, y)) else 0
             if y > 0:
                 brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y - 1)) else 0
-            if y < image.size[1] - 1:
+            if y < image.height - 1:
                 brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y + 1)) else 0
             
             filterImage.putpixel((x, y), round(min(brightness, 1) * 255))
