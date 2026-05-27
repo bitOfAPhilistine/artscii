@@ -1,3 +1,4 @@
 test_outputs
-fontdata*
+fonts/*
 output.txt
+__pycache__

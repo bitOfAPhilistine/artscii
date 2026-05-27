@@ -1,4 +1,4 @@
-import os, sys, math
+import os, sys, math, shutil
 from PIL import Image, ImageDraw, ImageFont, ImageText
 from chars import Char
 
@@ -81,32 +81,44 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
     # Check for a font data file in the fonts folder and create one if it doesn't exist
     fontName = "CascadiaMono-Regular.ttf"
     font = ImageFont.truetype(f"fonts/{fontName}", fontSize)
-    fontDataPath = f"fonts/fontdata-{font.getname()[0]}-{font.getname()[1]}"
-    if not os.path.exists(fontDataPath):
-        print("Font data file not found, creating font data file...")
-        # Save the font data to a file
-        with open(fontDataPath, 'w') as f:
-            data = ""
-            progress = 0
-            for c in ascii:
-                char = Char(c, 0, Image.new("1", (120, 240)))
-                data += f"{char.get_save_data(fontName)}\n"
-                progress += 1
-                printProgressBar(progress / len(ascii), 50)
+    fontDataFolder = f"fonts/{font.getname()[0]}-{font.getname()[1]}-{fontSize}"
+    try:
+        if test:
+            print("Test mode enabled, regenerating character data folder...")
+            shutil.rmtree(fontDataFolder)
+            raise Exception
+        print("Attempting to load character data from files...")
+        for i in range(len(ascii)):
+            char = Char(ascii[i], font, fontSize, i)
+            chars.append(char)
+            printProgressBar((i + 1) / len(ascii), 50)
+        print("Character data loaded successfully!")
+    except:
+        if os.path.exists(fontDataFolder):
+            print("Character data failed to load, deleting invalid folder...")
+            shutil.rmtree(fontDataFolder)
+            chars = []
+        else:
+            print("Character data folder not found.")
+        print("Generating character data...")
+        for i in range(len(ascii)):
+            char = Char(ascii[i], font, fontSize)
+            chars.append(char)
+            printProgressBar((i + 1) / len(ascii), 50)
+
+        print("Character data generated successfully! Saving to files...")
+        data = ""
+        pixels = Image.new("RGB", (chars[0].pixels.width * len(chars), chars[0].pixels.height * 2))
+        os.makedirs(fontDataFolder)
+        for char in chars:
+            data += char.to_string() + '\n'
+            pixels.paste(char.pixels, (chars.index(char) * char.pixels.width, 0))
+            pixels.paste(char.rawPixels, (chars.index(char) * char.pixels.width, char.pixels.height))
+        with open(f"{fontDataFolder}/data.txt", 'w') as f:
             f.write(data)
-            print("Font data saved. Initializing characters from file...")
-    else:
-        print("Font data file found, loading...")
-    with open(fontDataPath, 'r') as f:
-        for line in f:
-            char = line[0]
-            newChar = Char(char, 0, Image.new("1", cellSize))
-            ImageDraw.Draw(newChar.pixels).text((0, 0), char, font=font, fill=255)
-            newChar.brightness = round(float(line[1:]) * (cellSize[0] * cellSize[1]))
-            newChar.expand_filter()
-            chars.append(newChar)
-            printProgressBar((len(chars)) / len(ascii), 50)
-    
+        pixels.save(f"{fontDataFolder}/pixels.png")
+        print("Character data saved successfully!")
+
     # Save images of the characters for debugging purposes
     if test:
         fontTestImage = Image.new("L", (cellSize[0] * len(chars), cellSize[1]))
