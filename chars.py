@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageText
 class Char:
     def __init__(self, char: str, font: ImageFont.ImageFont, fontSize: int, index: int | None = None):
         self.char = char
-        self.rgbTotals = (0, 0, 0)
+        self.rgbTotals = [0, 0, 0]
         cellSize = (round(fontSize * 0.6), round(fontSize * 1.2))
         self.pixels = Image.new("RGB", cellSize) # r is horizontal bias, g is vertical bias, b is overall brightness
         self.rawPixels = Image.new("1", cellSize) # Used for generating the rgb values, saved for debugging
@@ -28,7 +28,7 @@ class Char:
                 pixel = rawPixels.getpixel((x, y))
                 if pixel > 0:
                     toCheck = ((x + 1, y), (x, y + 1), (x - 1, y), (x, y - 1))
-                    rgb = (0, 0, 255)
+                    rgb = [0, 0, 255]
                     for i in range(2):
                         check1 = toCheck[i]
                         check2 = toCheck[i + 2]
@@ -45,11 +45,11 @@ class Char:
 
                         if checkPix1 > 0 and checkPix2 > 0:
                             if i == 0:
-                                rgb = (rgb[0] + 255, rgb[1], 255)
+                                rgb[0] += 255
                             elif i == 1:
-                                rgb = (rgb[0], rgb[1] + 255, 255)
-                    self.pixels.putpixel((x, y), rgb)
-                    self.rgbTotals = (self.rgbTotals[0] + rgb[0], self.rgbTotals[1] + rgb[1], self.rgbTotals[2] + rgb[2])
+                                rgb[1] += 255
+                    self.pixels.putpixel((x, y), tuple(rgb))
+                    self.rgbTotals = [self.rgbTotals[0] + rgb[0], self.rgbTotals[1] + rgb[1], self.rgbTotals[2] + rgb[2]]
     
     def apply_expansion_filter(self):
         # Apply an expansion filter to the pixels, spreading brighter pixels to nearby darker pixels, with r only spreading horizontally, and g only spreading vertically
@@ -59,23 +59,19 @@ class Char:
 
         toCheck = []
         for i in range(1, math.floor(biasExpDist) + 1):
-            # Add pixels in a cross shape out to biasExpDist and a diamond shape out to brightExpDist, third value is the colors to be affected
+            # Add pixels in a diamond shape out to biasExpDist, third value is whether blue should be spread to that pixel or not
             if i <= brightExpDist:
-                toCheck.append((i, 0, 'rb'))
-                toCheck.append((-i, 0, 'rb'))
-                toCheck.append((0, i, 'gb'))
-                toCheck.append((0, -i, 'gb'))
-
-                for j in range(1, i):
-                    toCheck.append((i - j, j, 'b'))
-                    toCheck.append((-i + j, -j, 'b'))
-                    toCheck.append((-j, i - j, 'b'))
-                    toCheck.append((j, -i + j, 'b'))
+                for j in range(0, i):
+                    toCheck.append((i - j, j, True))
+                    toCheck.append((-i + j, -j, True))
+                    toCheck.append((-j, i - j, True))
+                    toCheck.append((j, -i + j, True))
             else:
-                toCheck.append((i, 0, 'r'))
-                toCheck.append((-i, 0, 'r'))
-                toCheck.append((0, i, 'g'))
-                toCheck.append((0, -i, 'g'))
+                for j in range(0, i):
+                    toCheck.append((i - j, j, False))
+                    toCheck.append((-i + j, -j, False))
+                    toCheck.append((-j, i - j, False))
+                    toCheck.append((j, -i + j, False))
         
         for x in range(self.pixels.width):
             for y in range(self.pixels.height):
@@ -88,20 +84,15 @@ class Char:
                         
                         if check[0] < 0 or check[0] >= self.pixels.width or check[1] < 0 or check[1] >= self.pixels.height:
                             continue
-                        newPix = newPixels.getpixel(check)
+                        newPix = list(newPixels.getpixel(check))
                         
-                        if 'r' in c[2]:
-                            val = round(pixel[0] * (biasExpDist - currentDist) / biasExpDist)
-                            newPix = (max(val, newPix[0]), newPix[1], newPix[2])
-                        elif 'g' in c[2]:
-                            val = round(pixel[1] * (biasExpDist - currentDist) / biasExpDist)
-                            newPix = (newPix[0], max(val, newPix[1]), newPix[2])
+                        newPix[0] = max(round(pixel[0] * (biasExpDist - currentDist) / biasExpDist), newPix[0])
+                        newPix[1] = max(round(pixel[1] * (biasExpDist - currentDist) / biasExpDist), newPix[1])
                         
-                        if 'b' in c[2]:
-                            val = round(pixel[2] * (brightExpDist - currentDist) / brightExpDist)
-                            newPix = (newPix[0], newPix[1], max(val, newPix[2]))
+                        if c[2]:
+                            newPix[2] = max(round(pixel[2] * (brightExpDist - currentDist) / brightExpDist), newPix[2])
                         
-                        newPixels.putpixel(check, newPix)
+                        newPixels.putpixel(check, tuple(newPix))
         
         self.pixels = newPixels
 
@@ -109,7 +100,7 @@ class Char:
         # Get the character's data from the font data file, and load the character's pixel data from the image file
         with open(f"{folder}/data.txt", 'r') as f:
             data = f.readlines()[index]
-            self.rgbTotals = tuple(map(int, data[1:].split(",")))
+            self.rgbTotals = list(map(int, data[1:].split(",")))
             # Raise an error if the given data is invalid so the main file can delete the font data file and create a new one
             if self.char != data[0]:
                 raise ValueError(f"Character mismatch in font data file, expected '{self.char}' but got '{data[0]}'")

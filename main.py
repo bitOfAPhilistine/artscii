@@ -4,8 +4,9 @@ from chars import Char
 
 
 class Cell:
-    def __init__(self, brightness: int = 0, pixels: Image.Image = Image.new("1", (1, 1))):
-        self.brightness = brightness
+    def __init__(self, pixels: Image.Image):
+        self.rgbTotals = [0, 0, 0]
+        self.highestB = 0
         self.pixels = pixels
 
 
@@ -133,8 +134,6 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
         newHeight = int(roundToMultiple(image.height, cellSize[1]))
         print(f"Image resolution is not a multiple of the cell size, resizing image to {newWidth}x{newHeight}...")
         image = image.resize((newWidth, newHeight))
-    
-    imageCells = [[Cell() for y in range(image.height // cellSize[1])] for x in range(image.width // cellSize[0])]
 
     # Apply a custom color quantization filter to the image to reduce the number of colors and make it easier to convert to ASCII art
     print("Quantizing image colors...")
@@ -156,32 +155,50 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
 
     # Apply an edge detection filter to the image
     print("Applying edge detection filter...")
-    filterImage = Image.new("L", image.size)
+    imageCells = [[None for j in range(image.height // cellSize[1])] for i in range(image.width // cellSize[0])]
     for x in range(image.width):
         for y in range(image.height):
             printProgressBar((x * image.height + y + 1) / (image.width * image.height), 50)
 
-            brightness = 0
-
+            pixel = image.getpixel((x, y))
+            neighbors = []
+            rgb = [0, 0, 0]
             if x > 0:
-                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x - 1, y)) else 0
+                neighbors.append((image.getpixel((x - 1, y)), 'x'))
             if x < image.width - 1:
-                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x + 1, y)) else 0
+                neighbors.append((image.getpixel((x + 1, y)), 'x'))
             if y > 0:
-                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y - 1)) else 0
+                neighbors.append((image.getpixel((x, y - 1)), 'y'))
             if y < image.height - 1:
-                brightness += 0.5 if image.getpixel((x, y)) != image.getpixel((x, y + 1)) else 0
+                neighbors.append((image.getpixel((x, y + 1)), 'y'))
             
-            filterImage.putpixel((x, y), round(min(brightness, 1) * 255))
-
-            currentCell = (x // cellSize[0], y // cellSize[1])
-            imageCells[currentCell[0]][currentCell[1]].brightness += brightness
-            if x % cellSize[0] == cellSize[0] - 1 and y % cellSize[1] == cellSize[1] - 1:
-                imageCells[currentCell[0]][currentCell[1]].pixels = filterImage.crop((currentCell[0] * cellSize[0], currentCell[1] * cellSize[1], (currentCell[0] + 1) * cellSize[0], (currentCell[1] + 1) * cellSize[1]))
+            for neighbor in neighbors:
+                distance = (abs(pixel[0] - neighbor[0][0]) + abs(pixel[1] - neighbor[0][1]) + abs(pixel[2] - neighbor[0][2])) // 3
+                if neighbor[1] == 'y':
+                    rgb[0] = max(rgb[0], distance)
+                elif neighbor[1] == 'x':
+                    rgb[1] = max(rgb[1], distance)
+                rgb[2] = max(rgb[2], distance)
+            
+            cellX = x // cellSize[0]
+            cellY = y // cellSize[1]
+            if not imageCells[cellX][cellY]:
+                imageCells[cellX][cellY] = Cell(Image.new("RGB", cellSize))
+            imageCells[cellX][cellY].pixels.putpixel((x % cellSize[0], y % cellSize[1]), tuple(rgb))
+            imageCells[cellX][cellY].rgbTotals[0] += rgb[0]
+            imageCells[cellX][cellY].rgbTotals[1] += rgb[1]
+            imageCells[cellX][cellY].rgbTotals[2] += rgb[2]
+            if rgb[2] > imageCells[cellX][cellY].highestB:
+                imageCells[cellX][cellY].highestB = rgb[2]
     
-    # Save a copy of the filtered image for debugging purposes
+    # Combine the cells into a single image and save it for debugging purposes
     if test:
-        filterImage.save("test_outputs/filtered_image.png")
+        filteredImage = Image.new("RGB", image.size)
+        for x in range(len(imageCells)):
+            for y in range(len(imageCells[x])):
+                if imageCells[x][y]:
+                    filteredImage.paste(imageCells[x][y].pixels, (x * cellSize[0], y * cellSize[1]))
+        filteredImage.save("test_outputs/filtered_image.png")
     
     # Convert the image cells to ASCII characters
     print("Beginning conversion...")
