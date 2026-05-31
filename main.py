@@ -212,16 +212,27 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             closestDiff = float("inf")
             closestChar = " "
             for char in chars:
-                if abs(cell.brightness - char.brightness) > closestDiff:
+                if abs(cell.rgbTotals[0] - char.rgbTotals[0]) + abs(cell.rgbTotals[1] - char.rgbTotals[1]) + abs(cell.rgbTotals[2] - char.rgbTotals[2]) > closestDiff:
                     continue
+
                 charDiff = 0
-                for i in range(len(cell.pixels.get_flattened_data())):
-                    charDiff += abs(cell.pixels.get_flattened_data()[i] - char.pixels.get_flattened_data()[i]) / 255
-                    if charDiff > closestDiff:
-                        break
-                    elif i == len(cell.pixels.get_flattened_data()) - 1:
-                        closestDiff = charDiff
-                        closestChar = char.char
+                for pixX in range(cell.pixels.width):
+                    for pixY in range(cell.pixels.height):
+                        cellPix = list(cell.pixels.getpixel((pixX, pixY)))
+                        try:
+                            rDiff = abs(round(cellPix[0] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[0])
+                            gDiff = abs(round(cellPix[1] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[1])
+                            bDiff = abs(round(cellPix[2] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[2])
+                        except ZeroDivisionError:
+                            rDiff = abs(round(cellPix[0]) - char.pixels.getpixel((pixX, pixY))[0])
+                            gDiff = abs(round(cellPix[1]) - char.pixels.getpixel((pixX, pixY))[1])
+                            bDiff = abs(round(cellPix[2]) - char.pixels.getpixel((pixX, pixY))[2])
+                        charDiff += (rDiff + gDiff + bDiff)
+                        if charDiff > closestDiff:
+                            break
+                
+                closestDiff = charDiff
+                closestChar = char.char
                 print("\r" + output[y][:x] + closestChar + output[y][x + 1:], end="")
             output[y] = output[y][:x] + closestChar + output[y][x + 1:]
             print("\r" + output[y], end="")
