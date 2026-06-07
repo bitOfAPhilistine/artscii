@@ -94,9 +94,10 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             chars.append(char)
             printProgressBar((i + 1) / len(ascii), 50)
         print("Character data loaded successfully!")
-    except:
+    except Exception as e:
         if os.path.exists(fontDataFolder):
-            print("Character data failed to load, deleting invalid folder...")
+            print(f"Error occurred while loading character data: {e}")
+            print("Deleting invalid folder...")
             shutil.rmtree(fontDataFolder)
             chars = []
         else:
@@ -175,10 +176,10 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             for neighbor in neighbors:
                 distance = (abs(pixel[0] - neighbor[0][0]) + abs(pixel[1] - neighbor[0][1]) + abs(pixel[2] - neighbor[0][2])) // 3
                 if neighbor[1] == 'y':
-                    rgb[0] = max(rgb[0], distance)
+                    rgb[0] = max(rgb[0], 255 if distance > 0 else 0)
                 elif neighbor[1] == 'x':
-                    rgb[1] = max(rgb[1], distance)
-                rgb[2] = max(rgb[2], distance)
+                    rgb[1] = max(rgb[1], 255 if distance > 0 else 0)
+                rgb[2] = max(rgb[2], 255 if distance > 0 else 0)
             
             cellX = x // cellSize[0]
             cellY = y // cellSize[1]
@@ -211,29 +212,34 @@ abcdefghijklmnopqrstuvwxyz{|}~∙·
             cell = imageCells[x][y]
             closestDiff = float("inf")
             closestChar = " "
+            cellPixMod = 1.0
+            if cell.highestB > 0:
+                cellPixMod = 255 / cell.highestB
+
             for char in chars:
+                '''
                 if abs(cell.rgbTotals[0] - char.rgbTotals[0]) + abs(cell.rgbTotals[1] - char.rgbTotals[1]) + abs(cell.rgbTotals[2] - char.rgbTotals[2]) > closestDiff:
                     continue
-
+                '''
                 charDiff = 0
                 for pixX in range(cell.pixels.width):
+                    if charDiff > closestDiff:
+                        break
+
                     for pixY in range(cell.pixels.height):
                         cellPix = list(cell.pixels.getpixel((pixX, pixY)))
-                        try:
-                            rDiff = abs(round(cellPix[0] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[0])
-                            gDiff = abs(round(cellPix[1] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[1])
-                            bDiff = abs(round(cellPix[2] * 255 / cell.highestB) - char.pixels.getpixel((pixX, pixY))[2])
-                        except ZeroDivisionError:
-                            rDiff = abs(round(cellPix[0]) - char.pixels.getpixel((pixX, pixY))[0])
-                            gDiff = abs(round(cellPix[1]) - char.pixels.getpixel((pixX, pixY))[1])
-                            bDiff = abs(round(cellPix[2]) - char.pixels.getpixel((pixX, pixY))[2])
-                        charDiff += (rDiff + gDiff + bDiff)
+                        rDiff = abs(round(cellPix[0] * cellPixMod) - char.pixels.getpixel((pixX, pixY))[0])
+                        gDiff = abs(round(cellPix[1] * cellPixMod) - char.pixels.getpixel((pixX, pixY))[1])
+                        bDiff = abs(round(cellPix[2] * cellPixMod) - char.pixels.getpixel((pixX, pixY))[2])
+                        charDiff += rDiff + gDiff + bDiff
+
                         if charDiff > closestDiff:
                             break
                 
-                closestDiff = charDiff
-                closestChar = char.char
-                print("\r" + output[y][:x] + closestChar + output[y][x + 1:], end="")
+                if charDiff < closestDiff:
+                    closestDiff = charDiff
+                    closestChar = char.char
+                    print("\r" + output[y][:x] + closestChar + output[y][x + 1:], end="")
             output[y] = output[y][:x] + closestChar + output[y][x + 1:]
             print("\r" + output[y], end="")
         print("\r" + output[y])

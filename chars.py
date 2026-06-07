@@ -104,7 +104,7 @@ class Char:
             # Raise an error if the given data is invalid so the main file can delete the font data file and create a new one
             if self.char != data[0]:
                 raise ValueError(f"Character mismatch in font data file, expected '{self.char}' but got '{data[0]}'")
-            if len(self.rgbTotals) != 3 or not all(map(lambda x: isinstance(x, int) and 0 <= x <= 255, self.rgbTotals)):
-                raise ValueError(f"Invalid rgb totals in font data file for character '{self.char}', expected 3 ints between 0 and 255 but got {self.rgbTotals}")
+            if len(self.rgbTotals) != 3 or not all(map(lambda x: isinstance(x, int) and x >= 0, self.rgbTotals)):
+                raise ValueError(f"Invalid rgb totals in font data file for character '{self.char}', expected 3 ints above or equal to 0 but got {self.rgbTotals}")
         pixelSheet = Image.open(f"{folder}/pixels.png")
         self.pixels = pixelSheet.crop((index * self.pixels.width, 0, (index + 1) * self.pixels.width, self.pixels.height))
